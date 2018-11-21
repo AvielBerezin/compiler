@@ -746,7 +746,18 @@ let rec tag_parse_expression sexpr =
     let def_ribs_vals = 
       propList_of_list (List.map get_val_from_rib (list_of_propList def_ribs)) in
     tag_parse_expression (Pair(Pair(Symbol "lambda", Pair(def_ribs_vars, body)), def_ribs_vals))
-
+  
+  (* let stat expansion *)
+  | Pair(Symbol "let*", _) as sexpr ->
+  let rec let_star_expand = function
+  (* TODO: do we really need 2 base cases? *)
+    | Pair(Symbol "let*", Pair(Nil, body)) -> Pair(Symbol "let", Pair(Nil, body)) 
+    | Pair(Symbol "let*", Pair(Pair(rib, ribs), body)) -> 
+    Pair(Symbol "let", Pair(Pair(rib, Nil),
+      Pair(Pair(Symbol "let*", Pair(Pair(ribs, Nil), body)), Nil)))
+    | _ -> raise X_syntax_error in
+  tag_parse_expression (let_star_expand sexpr)
+  
   (* Applications *)
   | Pair (f, args) -> Applic (tag_parse_expression f, exprList_of_propList args)
 
