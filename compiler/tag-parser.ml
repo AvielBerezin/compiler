@@ -638,8 +638,8 @@ let string_of_symbol = function
   | Symbol s -> s 
   | _ -> raise X_this_should_not_happen
 
-let rec list_of_sexprPropList = function
-  | Pair (head, tail) -> head :: list_of_sexprPropList tail
+let rec list_of_propList = function
+  | Pair (head, tail) -> head :: list_of_propList tail
   | Nil -> []
   | _ -> raise X_this_should_not_happen
 
@@ -648,11 +648,11 @@ let rec propList_of_list = function
   | [] -> Nil
 
 let rec tag_parse_expression sexpr =
-  let exprList_of_sexprPropList lst = List.map
-    tag_parse_expression (list_of_sexprPropList lst) in
+  let exprList_of_propList lst = List.map
+    tag_parse_expression (list_of_propList lst) in
   
-  let strList_of_sexprPropList sexprPropList = List.map
-    string_of_symbol (list_of_sexprPropList sexprPropList) in
+  let strList_of_propList sexprPropList = List.map
+    string_of_symbol (list_of_propList sexprPropList) in
   
   let rec strList_str_of_sexprList = function
     | Pair (Symbol cur, rest) -> let (args, arg_opt) = (strList_str_of_sexprList rest) in (cur :: args, arg_opt)
@@ -678,13 +678,13 @@ let rec tag_parse_expression sexpr =
   (* Lambda Expressions *)
   | Pair (Symbol "lambda", Pair (sexpr_args_list, body)) ->
     (try
-    LambdaSimple (strList_of_sexprPropList sexpr_args_list, tag_parse_expression (beginize_implicit_seq body))
+    LambdaSimple (strList_of_propList sexpr_args_list, tag_parse_expression (beginize_implicit_seq body))
     with X_this_should_not_happen ->
     let (args, arg_opt) = strList_str_of_sexprList sexpr_args_list in
     LambdaOpt (args, arg_opt, tag_parse_expression (beginize_implicit_seq body)))
   
   (* Disjunctions *)
-  | Pair (Symbol "or", args) -> Or (exprList_of_sexprPropList args)
+  | Pair (Symbol "or", args) -> Or (exprList_of_propList args)
 
   (* Definitions *)
   | Pair (Symbol "define", Pair (Pair(name, args), Pair(body, Nil))) ->
@@ -697,7 +697,7 @@ let rec tag_parse_expression sexpr =
   (* Sequences *)
   | Pair (Symbol "begin", Nil) -> Const Void
   | Pair (Symbol "begin", Pair(element, Nil)) -> tag_parse_expression element
-  | Pair (Symbol "begin", elements) -> Seq (exprList_of_sexprPropList elements)
+  | Pair (Symbol "begin", elements) -> Seq (exprList_of_propList elements)
 
   (* quasiquote expansion *)
   | Pair (Symbol "quasiquote", sexpr) ->
@@ -733,8 +733,22 @@ let rec tag_parse_expression sexpr =
       | _ -> raise X_syntax_error in
     tag_parse_expression (cond_expand ribs)
 
+  (* let expansion *)
+  | Pair(Symbol "let", Pair(def_ribs, body)) -> 
+    let get_var_from_rib = function 
+      | Pair(var, Pair(_, Nil)) -> var
+      | _ -> raise X_syntax_error in
+    let get_val_from_rib = function 
+      | Pair(_, Pair(value, Nil)) -> value
+      | _ -> raise X_syntax_error in
+    let def_ribs_vars = 
+      propList_of_list (List.map get_var_from_rib (list_of_propList def_ribs)) in
+    let def_ribs_vals = 
+      propList_of_list (List.map get_val_from_rib (list_of_propList def_ribs)) in
+    tag_parse_expression (Pair(Pair(Symbol "lambda", Pair(def_ribs_vars, body)), def_ribs_vals))
+
   (* Applications *)
-  | Pair (f, args) -> Applic (tag_parse_expression f, exprList_of_sexprPropList args)
+  | Pair (f, args) -> Applic (tag_parse_expression f, exprList_of_propList args)
 
   | _ -> raise X_not_yet_implemented;;
 
