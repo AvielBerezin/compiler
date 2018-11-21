@@ -716,7 +716,22 @@ let rec tag_parse_expression sexpr =
     tag_parse_expression (quasiquote_expand sexpr)
 
   (* cond expantion *)
-  
+  | Pair (Symbol "cond", ribs) ->
+    let rec cond_expand = function
+      | Pair(Pair(expr, Pair(Symbol "=>", Pair(exprF, Nil))), ribs) ->
+        Pair(Symbol "let", Pair(
+          Pair(
+            Pair(Symbol "value", Pair(expr, Nil)),
+            Pair(Pair(Symbol "f", Pair(Pair(Symbol "lambda", Pair(Nil, Pair(exprF, Nil))), Nil)), Nil)
+          ),
+          Pair(Pair(Symbol "if",
+          Pair(Symbol "value",
+          Pair(Pair(Pair(Symbol "f", Nil), Pair(Symbol "value", Nil)), Pair(cond_expand ribs, Nil)))), Nil)))
+      | Pair(Pair(Symbol "else", exprs), _) -> Pair(Symbol "begin", exprs)
+      | Pair(Pair(expr, exprs), ribs) ->
+        Pair(Symbol "if", Pair(expr, Pair(Pair(Symbol "begin", exprs), Pair(cond_expand ribs, Nil)))) 
+      | _ -> raise X_syntax_error in
+    tag_parse_expression (cond_expand ribs)
 
   (* Applications *)
   | Pair (f, args) -> Applic (tag_parse_expression f, exprList_of_sexprPropList args)
