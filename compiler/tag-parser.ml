@@ -672,7 +672,7 @@ let rec tag_parse_expression sexpr =
   match sexpr with
   (* Constants *)
   | Bool _ | Number _ | Char _ | String _ -> Const (Sexpr sexpr)
-  | Pair (Symbol "quote", quoted_form) -> Const (Sexpr quoted_form)
+  | Pair (Symbol "quote", Pair(quoted_form, Nil)) -> Const (Sexpr quoted_form)
 
   (* Variables *)
   | Symbol var when List.for_all (fun x -> x != var) reserved_word_list -> Var var
@@ -695,8 +695,8 @@ let rec tag_parse_expression sexpr =
   | Pair (Symbol "or", args) -> Or (exprList_of_propList args)
 
   (* Definitions *)
-  | Pair (Symbol "define", Pair (Pair(name, args), Pair(body, Nil))) ->
-    tag_parse_expression (Pair (Symbol "define", Pair (name, Pair (Symbol "lambda", Pair (args, Pair (body, Nil))))))
+  | Pair (Symbol "define", Pair (Pair(name, args), body)) ->
+    tag_parse_expression (Pair(Symbol "define", Pair(name, Pair(Pair (Symbol "lambda", Pair (args, body)), Nil))))
   | Pair (Symbol "define", Pair (name, Pair(value, Nil))) -> Def (tag_parse_expression name, tag_parse_expression value)
 
   (* Assignments *)
@@ -712,7 +712,7 @@ let rec tag_parse_expression sexpr =
     let rec quasiquote_expand = function 
       | Pair (Symbol "unquote", Pair (sexpr, Nil)) -> sexpr
       | Pair (Symbol "unquote-splicing", Pair (sexpr, Nil)) -> raise X_syntax_error
-      | Symbol _ | Nil as x -> Pair (Symbol "quote", Pair (x, Nil))
+      | Symbol _ | Nil as x -> Pair (Symbol "quote", x)
       | Bool _ | Number _ | Char _ | String _ as x -> x
       | Vector sexprList -> Pair(Symbol "vector", propList_of_list (List.map quasiquote_expand sexprList))
       | Pair (Pair (Symbol "unquote-splicing", Pair (sexpr, Nil)), b) ->
