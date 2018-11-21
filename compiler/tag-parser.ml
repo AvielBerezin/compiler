@@ -647,6 +647,14 @@ let rec propList_of_list = function
   | head :: tail -> Pair (head, propList_of_list tail)
   | [] -> Nil
 
+let map_propList mapper propList = propList_of_list (List.map mapper (list_of_propList propList))
+
+let rec caten_propList propList1 propList2 =
+  match propList1 with
+  | Pair(head, tail) -> Pair(head, caten_propList tail propList2)
+  | Nil -> propList2
+  | _ -> raise X_syntax_error
+
 let rec tag_parse_expression sexpr =
   let exprList_of_propList lst = List.map
     tag_parse_expression (list_of_propList lst) in
@@ -716,6 +724,7 @@ let rec tag_parse_expression sexpr =
     tag_parse_expression (quasiquote_expand sexpr)
 
   (* cond expantion *)
+  (* TODO: change the expander to not be recursive directly *)
   | Pair (Symbol "cond", ribs) ->
     let rec cond_expand = function
       | Pair(Pair(expr, Pair(Symbol "=>", Pair(exprF, Nil))), ribs) ->
@@ -741,15 +750,13 @@ let rec tag_parse_expression sexpr =
     let get_val_from_rib = function 
       | Pair(_, Pair(value, Nil)) -> value
       | _ -> raise X_syntax_error in
-    let def_ribs_vars = 
-      propList_of_list (List.map get_var_from_rib (list_of_propList def_ribs)) in
-    let def_ribs_vals = 
-      propList_of_list (List.map get_val_from_rib (list_of_propList def_ribs)) in
+    let def_ribs_vars = map_propList get_var_from_rib def_ribs in
+    let def_ribs_vals = map_propList get_val_from_rib def_ribs in
     tag_parse_expression (Pair(Pair(Symbol "lambda", Pair(def_ribs_vars, body)), def_ribs_vals))
   
-  (* let stat expansion *)
+  (* let* expansion *)
   | Pair(Symbol "let*", _) as sexpr ->
-  let rec let_star_expand = function
+  let let_star_expand = function
   (* TODO: do we really need 2 base cases? *)
     | Pair(Symbol "let*", Pair(Nil, body)) -> Pair(Symbol "let", Pair(Nil, body)) 
     | Pair(Symbol "let*", Pair(Pair(rib, ribs), body)) -> 
@@ -758,6 +765,20 @@ let rec tag_parse_expression sexpr =
     | _ -> raise X_syntax_error in
   tag_parse_expression (let_star_expand sexpr)
   
+  (* let-rec expansion *)
+  | Pair(Symbol "letrec", Pair(ribs, body)) ->
+    let dummify = function
+      | Pair(var, Pair(_, Nil)) -> Pair(var, Pair(Symbol "BUGA-BAKA-GOO-GI", Nil))
+      | _ -> raise X_syntax_error in
+    let dummy_vals_ribs = map_propList dummify ribs in
+    let setBangify = function
+      | Pair(var, Pair(value, Nil)) -> Pair(Symbol "set!" ,Pair(var, Pair(value, Nil)))
+      | _ -> raise X_syntax_error in
+    let set_bang_ribs = map_propList setBangify ribs in
+    tag_parse_expression (Pair(Symbol "let", Pair(dummy_vals_ribs, caten_propList set_bang_ribs body)))
+
+  
+
   (* Applications *)
   | Pair (f, args) -> Applic (tag_parse_expression f, exprList_of_propList args)
 
