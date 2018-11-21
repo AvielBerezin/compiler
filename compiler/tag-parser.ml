@@ -643,6 +643,9 @@ let rec list_of_sexprPropList = function
   | Nil -> []
   | _ -> raise X_this_should_not_happen
 
+let rec propList_of_list = function
+  | head :: tail -> Pair (head, propList_of_list tail)
+  | [] -> Nil
 
 let rec tag_parse_expression sexpr =
   let exprList_of_sexprPropList lst = List.map
@@ -695,6 +698,25 @@ let rec tag_parse_expression sexpr =
   | Pair (Symbol "begin", Nil) -> Const Void
   | Pair (Symbol "begin", Pair(element, Nil)) -> tag_parse_expression element
   | Pair (Symbol "begin", elements) -> Seq (exprList_of_sexprPropList elements)
+
+  (* quasiquote expansion *)
+  | Pair (Symbol "quasiquote", sexpr) ->
+    let rec quasiquote_expand = function 
+      | Pair (Symbol "unquote", Pair (sexpr, Nil)) -> sexpr
+      | Pair (Symbol "unquote-splicing", Pair (sexpr, Nil)) -> raise X_syntax_error
+      | Symbol _ | Nil as x -> Pair (Symbol "quote", Pair (x, Nil))
+      | Bool _ | Number _ | Char _ | String _ as x -> x
+      | Vector sexprList -> Pair(Symbol "vector", propList_of_list (List.map quasiquote_expand sexprList))
+      | Pair (Pair (Symbol "unquote-splicing", Pair (sexpr, Nil)), b) ->
+        Pair (Symbol "append", Pair (sexpr, Pair (quasiquote_expand b, Nil)))
+      | Pair (a, Pair (Symbol "unquote-splicing", Pair (sexpr, Nil))) ->
+        Pair (Symbol "cons", Pair (quasiquote_expand a, Pair (sexpr, Nil)))
+      | Pair (a, b) -> Pair (Symbol "cons", Pair (quasiquote_expand a, Pair (quasiquote_expand b, Nil)))
+    in
+    tag_parse_expression (quasiquote_expand sexpr)
+
+  (* cond expantion *)
+  
 
   (* Applications *)
   | Pair (f, args) -> Applic (tag_parse_expression f, exprList_of_sexprPropList args)
