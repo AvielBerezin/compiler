@@ -777,7 +777,11 @@ let rec tag_parse_expression sexpr =
     let set_bang_ribs = map_propList setBangify ribs in
     tag_parse_expression (Pair(Symbol "let", Pair(dummy_vals_ribs, caten_propList set_bang_ribs body)))
 
-  
+  (* and expansion *)
+  | Pair(Symbol "and", Nil) -> tag_parse_expression (Bool true)
+  | Pair(Symbol "and", Pair(expr, Nil)) -> tag_parse_expression expr
+  | Pair(Symbol "and", Pair(expr, exprs)) ->
+    tag_parse_expression (Pair(Symbol "if", Pair(expr, Pair(Pair(Symbol "and", exprs), Pair(Bool false, Nil)))))
 
   (* Applications *)
   | Pair (f, args) -> Applic (tag_parse_expression f, exprList_of_propList args)
