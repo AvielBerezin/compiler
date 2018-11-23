@@ -379,7 +379,7 @@ end;; (* end of struct PC *)
      let nt_digits = range '0' '9' in
      let nt_letters = range 'a' 'z' in
      let nt_letters_capital = range 'A' 'Z' in
-     let nt_letters_capital = pack nt_letters_capital (fun c -> Char.lowercase c) in
+     let nt_letters_capital = pack nt_letters_capital (fun c -> Char.lowercase_ascii c) in
      let nt_punctuations = one_of "!$^*-_=+<>/?:" in
      let nt_symbol_char = disj_list [nt_digits; nt_letters; nt_letters_capital; nt_punctuations] in
      let nt_symbol = pack (plus nt_symbol_char) list_to_string in
@@ -501,18 +501,10 @@ end;; (* end of struct PC *)
        | [] -> Nil
        | car::cdr::[] -> Pair (car, cdr)
        | car::cdr -> Pair (car , make_improper_list cdr) in
-     let rec vector_from_pairs = function
-       | Nil -> []
-       | Pair (car, Pair (cadr, cddr)) -> car::(vector_from_pairs (Pair (cadr, cddr)))
-       | Pair (car, Nil) -> [car]
-       | Pair (car, cdr) -> car::[cdr]
-       | _ -> raise X_this_should_not_happen in
    
      let nt_DOT = caten_and_forget_sides nt_skipable (char '.') nt_skipable in
      let nt_PL = caten_and_forget_right (char '(') nt_skipable in
-     let nt_PR = caten_and_forget_left nt_skipable (char ')') in
      let nt_BL = caten_and_forget_right (char '[') nt_skipable in
-     let nt_BR = caten_and_forget_left nt_skipable (char ']') in
    
      let nt_plus = plus all_sexprs_in_three_dots_only in
      let nt_star = star all_sexprs_in_three_dots_only in
@@ -634,6 +626,8 @@ let reserved_word_list =
 
 (* work on the tag parser starts here *)
 
+let compose f1 f2 = fun x -> f1(f2(x))
+
 let string_of_symbol = function
   | Symbol s -> s 
   | _ -> raise X_this_should_not_happen
@@ -707,24 +701,23 @@ let rec tag_parse_expression sexpr =
   | Pair (Symbol "begin", Pair(element, Nil)) -> tag_parse_expression element
   | Pair (Symbol "begin", elements) -> Seq (exprList_of_propList elements)
 
-  (* quasiquote expansion *)
-  | Pair (Symbol "quasiquote", sexpr) ->
+  (* quasiquote expansion *)  
+  | Pair(Symbol "quasiquote", Pair(sexpr, Nil)) ->
     let rec quasiquote_expand = function 
-      | Pair (Symbol "unquote", Pair (sexpr, Nil)) -> sexpr
+      | Pair (Symbol "unquote", Pair (sexpr, Nil)) -> let () = print_string "hello" in sexpr
       | Pair (Symbol "unquote-splicing", Pair (sexpr, Nil)) -> raise X_syntax_error
-      | Symbol _ | Nil as x -> Pair (Symbol "quote", x)
+      | Symbol _ | Nil as x -> Pair(Symbol "quote", Pair(x, Nil))
       | Bool _ | Number _ | Char _ | String _ as x -> x
       | Vector sexprList -> Pair(Symbol "vector", propList_of_list (List.map quasiquote_expand sexprList))
-      | Pair (Pair (Symbol "unquote-splicing", Pair (sexpr, Nil)), b) ->
+      | Pair (Pair (Symbol "unquote-splicing", Pair(sexpr, Nil)), b) ->
         Pair (Symbol "append", Pair (sexpr, Pair (quasiquote_expand b, Nil)))
-      | Pair (a, Pair (Symbol "unquote-splicing", Pair (sexpr, Nil))) ->
+      | Pair (a, Pair (Symbol "unquote-splicing", Pair(sexpr, Nil))) ->
         Pair (Symbol "cons", Pair (quasiquote_expand a, Pair (sexpr, Nil)))
       | Pair (a, b) -> Pair (Symbol "cons", Pair (quasiquote_expand a, Pair (quasiquote_expand b, Nil)))
     in
     tag_parse_expression (quasiquote_expand sexpr)
 
   (* cond expantion *)
-  (* TODO: change the expander to not be recursive directly *)
   | Pair (Symbol "cond", ribs) ->
     let rec cond_expand = function
       | Pair(Pair(expr, Pair(Symbol "=>", Pair(exprF, Nil))), ribs) ->
