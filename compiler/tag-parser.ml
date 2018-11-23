@@ -792,4 +792,4 @@ let test s = let () = print_string ("\n" ^ s ^ "\n") in Tag_Parser.tag_parse_exp
 2;;
 3;;
 "go";;
- test "(letrec ((a 1) (b 2)) (+ a b) (a b c))";;
+ test "(and)";;
