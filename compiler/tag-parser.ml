@@ -775,21 +775,21 @@ let rec tag_parse_expression sexpr =
   (* Applications *)
   | Pair (f, args) -> Applic (tag_parse_expression f, exprList_of_propList args)
 
-  | _ -> raise X_not_yet_implemented;;
+  | _ -> raise X_syntax_error;;
 
 
 
-let tag_parse_expressions sexpr = raise X_not_yet_implemented;;
+let tag_parse_expressions sexpr = List.map tag_parse_expression sexpr;;
 
 
   
 end;; (* struct Tag_Parser *)
 
 
-let test s = let () = print_string ("\n" ^ s ^ "\n") in Tag_Parser.tag_parse_expression (Reader.read_sexpr s);;
+let test s = let () = print_string ("\n" ^ s ^ "\n") in Tag_Parser.tag_parse_expressions (Reader.read_sexprs s);;
 0;;
 1;;
 2;;
 3;;
 "go";;
- test "(and)";;
+ test "(and) (if 1 2 3) (set! a 7)";;
