@@ -748,15 +748,11 @@ let rec tag_parse_expression sexpr =
     tag_parse_expression (Pair(Pair(Symbol "lambda", Pair(def_ribs_vars, body)), def_ribs_vals))
   
   (* let* expansion *)
-  | Pair(Symbol "let*", _) as sexpr ->
-  let let_star_expand = function
   (* TODO: do we really need 2 base cases? *)
-    | Pair(Symbol "let*", Pair(Nil, body)) -> Pair(Symbol "let", Pair(Nil, body)) 
-    | Pair(Symbol "let*", Pair(Pair(rib, ribs), body)) -> 
-    Pair(Symbol "let", Pair(Pair(rib, Nil),
-      Pair(Pair(Symbol "let*", Pair(Pair(ribs, Nil), body)), Nil)))
-    | _ -> raise X_syntax_error in
-  tag_parse_expression (let_star_expand sexpr)
+    | Pair(Symbol "let*", Pair(Nil, body)) -> tag_parse_expression (Pair(Symbol "let", Pair(Nil, body)))
+    | Pair(Symbol "let*", Pair(Pair(rib, ribs), body)) -> tag_parse_expression
+      (Pair(Symbol "let", Pair(Pair(rib, Nil),
+      Pair(Pair(Symbol "let*", Pair(ribs, body)), Nil))))
   
   (* let-rec expansion *)
   | Pair(Symbol "letrec", Pair(ribs, body)) ->
@@ -796,4 +792,4 @@ let test s = let () = print_string ("\n" ^ s ^ "\n") in Tag_Parser.tag_parse_exp
 2;;
 3;;
 "go";;
- test "(cond (#t 1) (2 => F) (else 7) (what no) (asd asd))";;
+ test "(letrec ((a 1) (b 2)) (+ a b) (a b c))";;
