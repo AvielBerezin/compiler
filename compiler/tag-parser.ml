@@ -672,9 +672,9 @@ let rec tag_parse_expression sexpr =
   | Symbol var when List.for_all (fun x -> x != var) reserved_word_list -> Var var
 
   (* Conditionals *)
-  | Pair (Symbol "if", Pair (_if, Pair(_then, Pair(_else, Nil)))) ->
+  | Pair (Symbol "if", Pair (_if, Pair(_then, Pair(_else, Nil)))) -> 
     If (tag_parse_expression _if, tag_parse_expression _then, tag_parse_expression _else)
-  | Pair (Symbol "if", Pair (_if, Pair(_then, Nil))) ->
+  | Pair (Symbol "if", Pair (_if, Pair(_then, Nil))) -> 
     If (tag_parse_expression _if, tag_parse_expression _then, Const Void)
   
   (* Lambda Expressions *)
@@ -719,22 +719,22 @@ let rec tag_parse_expression sexpr =
 
   (* cond expantion *)
   | Pair (Symbol "cond", ribs) ->
-    let rec cond_expand = function
-      | Pair(Pair(expr, Pair(Symbol "=>", Pair(exprF, Nil))), ribs) ->
-        Pair(Symbol "let", Pair(
+    (match ribs with
+      | Pair(Pair(expr, Pair(Symbol "=>", Pair(exprF, Nil))), ribs) -> tag_parse_expression
+        (Pair(Symbol "let", Pair(
           Pair(
             Pair(Symbol "value", Pair(expr, Nil)),
             Pair(Pair(Symbol "f", Pair(Pair(Symbol "lambda", Pair(Nil, Pair(exprF, Nil))), Nil)), Nil)
           ),
           Pair(Pair(Symbol "if",
           Pair(Symbol "value",
-          Pair(Pair(Pair(Symbol "f", Nil), Pair(Symbol "value", Nil)), Pair(cond_expand ribs, Nil)))), Nil)))
-      | Pair(Pair(Symbol "else", exprs), _) -> Pair(Symbol "begin", exprs)
-      | Pair(Pair(expr, exprs), ribs) ->
-        Pair(Symbol "if", Pair(expr, Pair(Pair(Symbol "begin", exprs), Pair(cond_expand ribs, Nil)))) 
-      | _ -> raise X_syntax_error in
-    tag_parse_expression (cond_expand ribs)
-
+          Pair(Pair(Pair(Symbol "f", Nil), Pair(Symbol "value", Nil)), Pair(Pair(Symbol "cond", ribs), Nil)))), Nil))))
+      | Pair(Pair(Symbol "else", exprs), _) -> tag_parse_expression (Pair(Symbol "begin", exprs))
+      | Pair(Pair(expr, exprs), ribs) -> tag_parse_expression
+        (Pair(Symbol "if", Pair(expr, Pair(Pair(Symbol "begin", exprs), Pair(Pair(Symbol "cond", ribs), Nil)))))
+      | Nil -> Const Void
+      | _ -> raise X_syntax_error)
+  
   (* let expansion *)
   | Pair(Symbol "let", Pair(def_ribs, body)) -> 
     let get_var_from_rib = function 
@@ -788,3 +788,12 @@ let tag_parse_expressions sexpr = raise X_not_yet_implemented;;
 
   
 end;; (* struct Tag_Parser *)
+
+
+let test s = let () = print_string ("\n" ^ s ^ "\n") in Tag_Parser.tag_parse_expression (Reader.read_sexpr s);;
+0;;
+1;;
+2;;
+3;;
+"go";;
+ test "(cond (#t 1) (2 => F) (else 7) (what no) (asd asd))";;
