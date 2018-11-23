@@ -630,12 +630,12 @@ let compose f1 f2 = fun x -> f1(f2(x))
 
 let string_of_symbol = function
   | Symbol s -> s 
-  | _ -> raise X_this_should_not_happen
+  | _ -> raise X_syntax_error
 
 let rec list_of_propList = function
   | Pair (head, tail) -> head :: list_of_propList tail
   | Nil -> []
-  | _ -> raise X_this_should_not_happen
+  | _ -> raise X_syntax_error
 
 let rec propList_of_list = function
   | head :: tail -> Pair (head, propList_of_list tail)
@@ -659,7 +659,7 @@ let rec tag_parse_expression sexpr =
   let rec strList_str_of_sexprList = function
     | Pair (Symbol cur, rest) -> let (args, arg_opt) = (strList_str_of_sexprList rest) in (cur :: args, arg_opt)
     | Symbol arg_opt -> ([], arg_opt)
-    | _ -> raise X_this_should_not_happen in
+    | _ -> raise X_syntax_error in
 
   let beginize_implicit_seq seq = (Pair (Symbol "begin", seq)) in
 
@@ -669,7 +669,7 @@ let rec tag_parse_expression sexpr =
   | Pair (Symbol "quote", Pair(quoted_form, Nil)) -> Const (Sexpr quoted_form)
 
   (* Variables *)
-  | Symbol var when List.for_all (fun x -> x != var) reserved_word_list -> Var var
+  | Symbol var when List.for_all (fun x -> not (x = var)) reserved_word_list -> Var var
 
   (* Conditionals *)
   | Pair (Symbol "if", Pair (_if, Pair(_then, Pair(_else, Nil)))) -> 
@@ -681,11 +681,13 @@ let rec tag_parse_expression sexpr =
   | Pair (Symbol "lambda", Pair (sexpr_args_list, body)) ->
     (try
     LambdaSimple (strList_of_propList sexpr_args_list, tag_parse_expression (beginize_implicit_seq body))
-    with X_this_should_not_happen ->
+    with X_syntax_error ->
     let (args, arg_opt) = strList_str_of_sexprList sexpr_args_list in
     LambdaOpt (args, arg_opt, tag_parse_expression (beginize_implicit_seq body)))
   
   (* Disjunctions *)
+  | Pair (Symbol "or", Nil) -> Const (Sexpr (Bool false))
+  | Pair (Symbol "or", Pair(arg, Nil)) -> tag_parse_expression arg
   | Pair (Symbol "or", args) -> Or (exprList_of_propList args)
 
   (* Definitions *)
@@ -757,7 +759,7 @@ let rec tag_parse_expression sexpr =
   (* let-rec expansion *)
   | Pair(Symbol "letrec", Pair(ribs, body)) ->
     let dummify = function
-      | Pair(var, Pair(_, Nil)) -> Pair(var, Pair(Symbol "BUGA-BAKA-GOO-GI", Nil))
+      | Pair(var, Pair(_, Nil)) -> Pair(var, Pair(Pair(Symbol "quote", Pair(Symbol "BUGA-BAKA-GOO-GI", Nil)) ,Nil))
       | _ -> raise X_syntax_error in
     let dummy_vals_ribs = map_propList dummify ribs in
     let setBangify = function
@@ -784,12 +786,3 @@ let tag_parse_expressions sexpr = List.map tag_parse_expression sexpr;;
 
   
 end;; (* struct Tag_Parser *)
-
-
-let test s = let () = print_string ("\n" ^ s ^ "\n") in Tag_Parser.tag_parse_expressions (Reader.read_sexprs s);;
-0;;
-1;;
-2;;
-3;;
-"go";;
- test "(and) (if 1 2 3) (set! a 7)";;
