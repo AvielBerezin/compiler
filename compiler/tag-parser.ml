@@ -670,6 +670,8 @@ let rec tag_parse_expression sexpr =
 
   let verify_var v ret = match v with Var _ -> ret | _ -> raise X_syntax_error in
 
+  let verify_nil n ret = match n with Nil -> ret | _ -> raise X_syntax_error in
+
   match sexpr with
   (* Constants *)
   | Bool _ | Number _ | Char _ | String _ -> Const (Sexpr sexpr)
@@ -763,7 +765,7 @@ let rec tag_parse_expression sexpr =
         Pair(Pair(Pair(Symbol "f", Nil), Pair(Symbol "value", Nil)),
         Pair(Pair(Symbol "rest", Nil),
         Nil)))), Nil))))
-      | Pair(Pair(Symbol "else", exprs), _) -> tag_parse_expression (Pair(Symbol "begin", exprs))
+      | Pair(Pair(Symbol "else", exprs), ribs) -> verify_nil ribs tag_parse_expression (Pair(Symbol "begin", exprs))
       | Pair(Pair(expr, exprs), ribs) -> tag_parse_expression
         (Pair(Symbol "if", Pair(expr, Pair(Pair(Symbol "begin", exprs), Pair(Pair(Symbol "cond", ribs), Nil)))))
       | Nil -> Const Void
@@ -782,8 +784,8 @@ let rec tag_parse_expression sexpr =
     tag_parse_expression (Pair(Pair(Symbol "lambda", Pair(def_ribs_vars, body)), def_ribs_vals))
   
   (* let* expansion *)
-  (* TODO: do we really need 2 base cases? *)
     | Pair(Symbol "let*", Pair(Nil, body)) -> tag_parse_expression (Pair(Symbol "let", Pair(Nil, body)))
+    | Pair(Symbol "let*", Pair(Pair(rib, Nil), body)) -> tag_parse_expression (Pair(Symbol "let", Pair(Pair(rib, Nil), body)))
     | Pair(Symbol "let*", Pair(Pair(rib, ribs), body)) -> tag_parse_expression
       (Pair(Symbol "let", Pair(Pair(rib, Nil),
       Pair(Pair(Symbol "let*", Pair(ribs, body)), Nil))))
@@ -816,5 +818,5 @@ let rec tag_parse_expression sexpr =
 let tag_parse_expressions sexpr = List.map tag_parse_expression sexpr;;
 
 
-  
+    
 end;; (* struct Tag_Parser *)
