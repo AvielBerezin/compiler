@@ -637,6 +637,11 @@ let rec list_of_propList = function
   | Nil -> []
   | _ -> raise X_syntax_error
 
+let rec list_of_propImpropList = function
+  | Pair (head, tail) -> head :: list_of_propImpropList tail
+  | Nil -> []
+  | x -> [x]
+
 let rec propList_of_list = function
   | head :: tail -> Pair (head, propList_of_list tail)
   | [] -> Nil
@@ -663,6 +668,8 @@ let rec tag_parse_expression sexpr =
 
   let beginize_implicit_seq seq = (Pair (Symbol "begin", seq)) in
 
+  let verify_var v ret = match v with Var _ -> ret | _ -> raise X_syntax_error in
+
   match sexpr with
   (* Constants *)
   | Bool _ | Number _ | Char _ | String _ -> Const (Sexpr sexpr)
@@ -678,12 +685,18 @@ let rec tag_parse_expression sexpr =
     If (tag_parse_expression _if, tag_parse_expression _then, Const Void)
   
   (* Lambda Expressions *)
-  | Pair (Symbol "lambda", Pair (sexpr_args_list, body)) ->
+  | Pair (Symbol "lambda", Pair (sexpr_args_list, Nil)) -> raise X_syntax_error
+  | Pair (Symbol "lambda", Pair (sexpr_args_list, body)) -> 
+      let rec all_differ = function
+      | head :: tail -> (List.for_all (fun x -> not (head = x)) tail) && (all_differ tail)
+      | [] -> true in
+    if all_differ (list_of_propImpropList sexpr_args_list) then
     (try
     LambdaSimple (strList_of_propList sexpr_args_list, tag_parse_expression (beginize_implicit_seq body))
     with X_syntax_error ->
     let (args, arg_opt) = strList_str_of_sexprList sexpr_args_list in
     LambdaOpt (args, arg_opt, tag_parse_expression (beginize_implicit_seq body)))
+    else raise X_syntax_error
   
   (* Disjunctions *)
   | Pair (Symbol "or", Nil) -> Const (Sexpr (Bool false))
@@ -693,10 +706,16 @@ let rec tag_parse_expression sexpr =
   (* Definitions *)
   | Pair (Symbol "define", Pair (Pair(name, args), body)) ->
     tag_parse_expression (Pair(Symbol "define", Pair(name, Pair(Pair (Symbol "lambda", Pair (args, body)), Nil))))
-  | Pair (Symbol "define", Pair (name, Pair(value, Nil))) -> Def (tag_parse_expression name, tag_parse_expression value)
+  | Pair (Symbol "define", Pair (name, Pair(value, Nil))) -> 
+    let name_expr = tag_parse_expression name in
+    let value_expr = tag_parse_expression value in
+    verify_var name_expr (Def(name_expr, value_expr))
 
   (* Assignments *)
-  | Pair (Symbol "set!", Pair (variable, Pair (value, Nil))) -> Set (tag_parse_expression variable, tag_parse_expression value)
+  | Pair (Symbol "set!", Pair (variable, Pair (value, Nil))) -> 
+    let variable_expr = tag_parse_expression variable in
+    let value_expr = tag_parse_expression value in
+    verify_var variable_expr (Set(variable_expr, value_expr))
 
   (* Sequences *)
   | Pair (Symbol "begin", Nil) -> Const Void
