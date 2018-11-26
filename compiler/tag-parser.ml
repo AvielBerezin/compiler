@@ -626,7 +626,7 @@ let reserved_word_list =
 
 (* work on the tag parser starts here *)
 
-let compose f1 f2 = fun x -> f1(f2(x))
+(* let compose f1 f2 = fun x -> f1(f2(x)) *)
 
 let string_of_symbol = function
   | Symbol s -> s 
@@ -722,15 +722,28 @@ let rec tag_parse_expression sexpr =
   (* cond expantion *)
   | Pair (Symbol "cond", ribs) ->
     (match ribs with
+      | Pair(Pair(expr, Pair(Symbol "=>", Pair(exprF, Nil))), Nil) -> tag_parse_expression
+        (Pair(Symbol "let", Pair(
+          Pair(Pair(Symbol "value", Pair(expr, Nil)),
+          Pair(Pair(Symbol "f", Pair(Pair(Symbol "lambda", Pair(Nil, Pair(exprF, Nil))), Nil)),
+          Nil)
+        ),
+        Pair(Pair(Symbol "if",
+        Pair(Symbol "value",
+        Pair(Pair(Pair(Symbol "f", Nil), Pair(Symbol "value", Nil)),
+        Nil))), Nil))))
       | Pair(Pair(expr, Pair(Symbol "=>", Pair(exprF, Nil))), ribs) -> tag_parse_expression
         (Pair(Symbol "let", Pair(
-          Pair(
-            Pair(Symbol "value", Pair(expr, Nil)),
-            Pair(Pair(Symbol "f", Pair(Pair(Symbol "lambda", Pair(Nil, Pair(exprF, Nil))), Nil)), Nil)
-          ),
-          Pair(Pair(Symbol "if",
-          Pair(Symbol "value",
-          Pair(Pair(Pair(Symbol "f", Nil), Pair(Symbol "value", Nil)), Pair(Pair(Symbol "cond", ribs), Nil)))), Nil))))
+          Pair(Pair(Symbol "value", Pair(expr, Nil)),
+          Pair(Pair(Symbol "f", Pair(Pair(Symbol "lambda", Pair(Nil, Pair(exprF, Nil))), Nil)),
+          Pair(Pair(Symbol "rest", Pair(Pair(Symbol "lambda", Pair(Nil, Pair(Pair(Symbol "cond", ribs), Nil))), Nil)),
+          Nil))
+        ),
+        Pair(Pair(Symbol "if",
+        Pair(Symbol "value",
+        Pair(Pair(Pair(Symbol "f", Nil), Pair(Symbol "value", Nil)),
+        Pair(Pair(Symbol "rest", Nil),
+        Nil)))), Nil))))
       | Pair(Pair(Symbol "else", exprs), _) -> tag_parse_expression (Pair(Symbol "begin", exprs))
       | Pair(Pair(expr, exprs), ribs) -> tag_parse_expression
         (Pair(Symbol "if", Pair(expr, Pair(Pair(Symbol "begin", exprs), Pair(Pair(Symbol "cond", ribs), Nil)))))
@@ -759,7 +772,7 @@ let rec tag_parse_expression sexpr =
   (* let-rec expansion *)
   | Pair(Symbol "letrec", Pair(ribs, body)) ->
     let dummify = function
-      | Pair(var, Pair(_, Nil)) -> Pair(var, Pair(Pair(Symbol "quote", Pair(Symbol "BUGA-BAKA-GOO-GI", Nil)) ,Nil))
+      | Pair(var, Pair(_, Nil)) -> Pair(var, Pair(Pair(Symbol "quote", Pair(Symbol "whatever", Nil)) ,Nil))
       | _ -> raise X_syntax_error in
     let dummy_vals_ribs = map_propList dummify ribs in
     let setBangify = function
