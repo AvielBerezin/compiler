@@ -890,7 +890,6 @@ let rec annot_var (e : expr') (vn : string) (l : int) (p : int) : expr' =
   let acv e = annot_var e vn l p in
   let anv e = annot_var e vn (l + 1) p in
   match e with
-  (* cool ass function *)
   (* trivial *)
   | Const' raw -> Const' raw
   | Box' raw -> Box' raw
@@ -906,7 +905,7 @@ let rec annot_var (e : expr') (vn : string) (l : int) (p : int) : expr' =
       else original
   )
 
-  (* trivial recursive calls *)
+  (* recursively annotating var for CURRENT level *)
   | If' (raw1, raw2, raw3) -> If' (acv raw1, acv raw2, acv raw3)
   | Seq' raw -> Seq' (List.map acv raw)
   | Set' (raw1, raw2) -> Set' (acv raw1, acv raw2)
@@ -915,14 +914,13 @@ let rec annot_var (e : expr') (vn : string) (l : int) (p : int) : expr' =
   | Applic' (raw1, raw2) -> Applic' (acv raw1, List.map acv raw2)
   | ApplicTP' (raw1, raw2) -> ApplicTP' (acv raw1, List.map acv raw2)
   
-  (* interesting: lambdas *)
+  (* recursively annotating var for NEXT level *)
   | LambdaSimple' (raw1, raw2) -> LambdaSimple' (raw1, anv raw2)
   | LambdaOpt' (raw1, raw2, raw3) -> LambdaOpt' (raw1, raw2, anv raw3);;
 
 let annot_var_init e vn i = annot_var e vn (-1) i;;
 
-let rec annot_lex_addr (e : expr') : expr' =
-  match e with
+let rec annot_lex_addr = function
   (* trivial *)
   | Const' raw -> Const' raw
   | Box' raw -> Box' raw
