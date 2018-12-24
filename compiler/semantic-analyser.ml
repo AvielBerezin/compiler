@@ -860,88 +860,97 @@ end;;
 
 module Semantics : SEMANTICS = struct
 
-let annotate_lexical_addresses e =
-  let rec (set_all_free as saf) : expr -> expr' = function
-    | Const raw -> Const' raw
+let (<<) f g x = f (g x);;
+let (>>) f g x = g (f x);;
 
-    | Var raw -> Var' (VarFree raw)
-
-    | If (raw1, raw2, raw3) -> If' (saf raw1, saf raw2, saf raw3)
-    | Seq raw -> Seq' (List.map saf raw)
-    | Set (raw1, raw2) -> Set' (saf raw1,saf raw2)
-    | Def (raw1, raw2) -> Def' (saf raw1, saf raw2)
-    | Or raw -> Or' (List.map saf raw)
-    | Applic (raw1, raw2) -> Applic' (saf raw1, List.map saf raw2)
-
-    | LambdaSimple (raw1, raw2) -> LambdaSimple' (raw1, saf raw2)
-    | LambdaOpt (raw1, raw2, raw3) -> LambdaOpt' (raw1, raw2, saf raw3)
+let indexed_fold_left =
+  let rec helper i f init lst =
+    match lst with
+    | [] -> init
+    | head :: tail -> helper (i+1) f (f init head i) tail
   in
+  helper 0;;
 
-  let annot_lex_addr : expr' -> expr' =
-    let rec annot_var (e : expr') (vn : string) (l : int) (p : int) : expr' =
-      let acv = fun e -> annot_var e vn l p in
-      let anv = fun e -> annot_var e vn (l + 1) p in
-      match e with
-      (* cool ass function *)
-      (* trivial *)
-      | Const' raw -> Const' raw
-      | Box' raw -> Box' raw
-      | BoxGet' raw -> BoxGet' raw
-      | BoxSet' (raw1, raw2) -> BoxSet' (raw1, raw2)
+let rec (set_all_free as saf) : expr -> expr' = function
+  | Const raw -> Const' raw
 
-      (* interesting: annotating var type *)
-      | Var' raw_var -> Var' (match raw_var with 
-        | (VarFree raw_vn) as original_free ->
-          if raw_vn = vn
-          then (
-            if l = -1 then VarParam (raw_vn, p) else VarBound (raw_vn, l, p))
-          else original_free
-        | VarParam (raw1, raw2) -> raise X_this_should_not_happen
-        | VarBound (r1, r2, r3) -> raise X_this_should_not_happen
-      )
+  | Var raw -> Var' (VarFree raw)
 
-      (* trivial recursive calls *)
-      | If' (raw1, raw2, raw3) -> If' (acv raw1, acv raw2, acv raw3)
-      | Seq' raw -> Seq' (List.map acv raw)
-      | Set' (raw1, raw2) -> Set' (acv raw1, acv raw2)
-      | Def' (raw1, raw2) -> Def' (acv raw1, acv raw2)
-      | Or' raw -> Or' raw
-      | Applic' (raw1, raw2) -> Applic' (acv raw1, List.map acv raw2)
-      | ApplicTP' (raw1, raw2) -> ApplicTP' (acv raw1, List.map acv raw2)
-      
-      (* interesting: lambdas *)
-      | LambdaSimple' (raw1, raw2) -> LambdaSimple' (raw1, raw2)
-      | LambdaOpt' (raw1, raw2, raw3) -> LambdaOpt' (raw1, raw2, raw3)
-    in
-    function
-    (* trivial *)
-    | Const' raw -> Const' raw
+  | If (raw1, raw2, raw3) -> If' (saf raw1, saf raw2, saf raw3)
+  | Seq raw -> Seq' (List.map saf raw)
+  | Set (raw1, raw2) -> Set' (saf raw1,saf raw2)
+  | Def (raw1, raw2) -> Def' (saf raw1, saf raw2)
+  | Or raw -> Or' (List.map saf raw)
+  | Applic (raw1, raw2) -> Applic' (saf raw1, List.map saf raw2)
 
-    (* interesting: annotating var type *)
-    | Var' raw -> Var' raw
-    
-    (* trivial recursive calls *)
-    | If' (raw1, raw2, raw3) -> If' (raw1, raw2, raw3)
-    | Seq' raw -> Seq' raw
-    | Set' (raw1, raw2) -> Set' (raw1, raw2)
-    | Def' (raw1, raw2) -> Def' (raw1, raw2)
-    | Or' raw -> Or' raw
-    | Applic' (raw1, raw2) -> Applic' (raw1, raw2)
+  | LambdaSimple (raw1, raw2) -> LambdaSimple' (raw1, saf raw2)
+  | LambdaOpt (raw1, raw2, raw3) -> LambdaOpt' (raw1, raw2, saf raw3);;
 
-    (* interesting: lambdas *)
-    | LambdaSimple' (raw1, raw2) -> LambdaSimple' (raw1, raw2)
-    | LambdaOpt' (raw1, raw2, raw3) -> LambdaOpt' (raw1, raw2, raw3)
-  in
-  annot_lex_addr (set_all_free e)
-  ;;
+let rec annot_var (e : expr') (vn : string) (l : int) (p : int) : expr' =
+  let acv e = annot_var e vn l p in
+  let anv e = annot_var e vn (l + 1) p in
+  match e with
+  (* cool ass function *)
+  (* trivial *)
+  | Const' raw -> Const' raw
+  | Box' raw -> Box' raw
+  | BoxGet' raw -> BoxGet' raw
+  | BoxSet' (raw1, raw2) -> BoxSet' (raw1, raw2)
+
+  (* interesting: annotating var type *)
+  | Var' raw_var -> Var' (match raw_var with 
+    | ((VarFree raw_vn) | VarParam (raw_vn, _) | VarBound (raw_vn, _, _)) as original->
+      if raw_vn = vn
+      then (
+        if l = -1 then VarParam (raw_vn, p) else VarBound (raw_vn, l, p))
+      else original
+  )
+
+  (* trivial recursive calls *)
+  | If' (raw1, raw2, raw3) -> If' (acv raw1, acv raw2, acv raw3)
+  | Seq' raw -> Seq' (List.map acv raw)
+  | Set' (raw1, raw2) -> Set' (acv raw1, acv raw2)
+  | Def' (raw1, raw2) -> Def' (acv raw1, acv raw2)
+  | Or' raw -> Or' raw
+  | Applic' (raw1, raw2) -> Applic' (acv raw1, List.map acv raw2)
+  | ApplicTP' (raw1, raw2) -> ApplicTP' (acv raw1, List.map acv raw2)
+  
+  (* interesting: lambdas *)
+  | LambdaSimple' (raw1, raw2) -> LambdaSimple' (raw1, anv raw2)
+  | LambdaOpt' (raw1, raw2, raw3) -> LambdaOpt' (raw1, raw2, anv raw3);;
+
+let annot_var_init e vn i = annot_var e vn (-1) i;;
+
+let rec annot_lex_addr (e : expr') : expr' =
+  match e with
+  (* trivial *)
+  | Const' raw -> Const' raw
+  | Box' raw -> Box' raw
+  | BoxGet' raw -> BoxGet' raw
+  | BoxSet' (raw1, raw2) -> BoxSet' (raw1, raw2)
+  | Var' raw_var -> Var' raw_var
+
+  (* trivial recursive calls *)
+  | If' (raw1, raw2, raw3) -> If' (annot_lex_addr raw1, annot_lex_addr raw2, annot_lex_addr raw3)
+  | Seq' raw -> Seq' (List.map annot_lex_addr raw)
+  | Set' (raw1, raw2) -> Set' (annot_lex_addr raw1, annot_lex_addr raw2)
+  | Def' (raw1, raw2) -> Def' (annot_lex_addr raw1, annot_lex_addr raw2)
+  | Or' raw -> Or' raw
+  | Applic' (raw1, raw2) -> Applic' (annot_lex_addr raw1, List.map annot_lex_addr raw2)
+  | ApplicTP' (raw1, raw2) -> ApplicTP' (annot_lex_addr raw1, List.map annot_lex_addr raw2)
+  
+  (* interesting: lambdas *)
+  | LambdaSimple' (vn_lst, body) -> LambdaSimple' (vn_lst, indexed_fold_left annot_var_init body vn_lst)
+  | LambdaOpt' (vn_lst, vn_opt, body) -> LambdaOpt' (vn_lst, vn_opt, indexed_fold_left annot_var_init body (vn_lst@[vn_opt]));;
+
+let annotate_lexical_addresses = annot_lex_addr << set_all_free;;
+
+
 
 let annotate_tail_calls e = raise X_not_yet_implemented;;
 
 let box_set e = raise X_not_yet_implemented;;
 
-let run_semantics expr =
-  box_set
-    (annotate_tail_calls
-       (annotate_lexical_addresses expr));;
+let run_semantics = box_set << annotate_tail_calls << annotate_lexical_addresses;;
   
 end;; (* struct Semantics *)
