@@ -964,10 +964,10 @@ let rec annot_tc_susp s = function
 
   (* recursive calls *)
   | If' (raw1, raw2, raw3) -> If' (annot_tc_susp false raw1, annot_tc_susp s raw2, annot_tc_susp s raw3)
-  | Seq' raw -> Seq' (map_with_last_exception (annot_tc_susp false) (annot_tc_susp true) raw)
+  | Seq' raw -> Seq' (map_with_last_exception (annot_tc_susp false) (annot_tc_susp s) raw)
   | Set' (raw1, raw2) -> Set' (annot_tc_susp false raw1, annot_tc_susp false raw2)
   | Def' (raw1, raw2) -> Def' (annot_tc_susp false raw1, annot_tc_susp false raw2)
-  | Or' raw -> Or' (List.map (annot_tc_susp false) raw) (* TODO: check what should we do with or *)
+  | Or' raw -> Or' (map_with_last_exception (annot_tc_susp false) (annot_tc_susp s) raw)
 
   (* starts the suspection rolling *)
   | LambdaSimple' (vn_lst, body) -> LambdaSimple' (vn_lst, annot_tc_susp true body)
