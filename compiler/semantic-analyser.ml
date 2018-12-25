@@ -980,27 +980,7 @@ let rec annot_tc_susp s = function
   | ApplicTP' (raw1, raw2) -> raise X_this_should_not_happen (* this shouldn't exist yet *)
 ;;
 
-let annotate_tail_calls = function
-  (* trivial *)
-  | Const' raw -> Const' raw
-  | Box' raw -> Box' raw
-  | BoxGet' raw -> BoxGet' raw
-  | BoxSet' (raw1, raw2) -> BoxSet' (raw1, raw2)
-  | Var' raw_var -> Var' raw_var
-
-  (* trivial recursive calls *)
-  | If' (raw1, raw2, raw3) -> If' (annotate_tail_calls raw1, annotate_tail_calls raw2, annotate_tail_calls raw3)
-  | Seq' raw -> Seq' (List.map annotate_tail_calls raw)
-  | Set' (raw1, raw2) -> Set' (annotate_tail_calls raw1, annotate_tail_calls raw2)
-  | Def' (raw1, raw2) -> Def' (annotate_tail_calls raw1, annotate_tail_calls raw2)
-  | Or' raw -> Or' (List.map annotate_tail_calls raw)
-  | LambdaSimple' (vn_lst, body) -> LambdaSimple' (vn_lst, annotate_tail_calls body)
-  | LambdaOpt' (vn_lst, vn_opt, body) -> LambdaOpt' (vn_lst, vn_opt, annotate_tail_calls body)
-
-  (* interesting: aplics *)
-  | Applic' (raw1, raw2) -> Applic' (annot_lex_addr raw1, List.map annot_lex_addr raw2)
-  | ApplicTP' (raw1, raw2) -> ApplicTP' (annot_lex_addr raw1, List.map annot_lex_addr raw2)
-;;
+let annotate_tail_calls = annot_tc_susp false;;
 
 let box_set e = raise X_not_yet_implemented;;
 
