@@ -869,7 +869,14 @@ let indexed_fold_left =
     | [] -> init
     | head :: tail -> helper (i+1) f (f init head i) tail
   in
-  helper 0;;
+  helper 0
+;;
+
+let rec map_with_last_exception f g = function
+  | [] -> []
+  | first :: second :: rest -> (f first) :: map_with_last_exception f g (second :: rest)
+  | [last] -> [g last]
+;;
 
 let rec (set_all_free as saf) : expr -> expr' = function
   | Const raw -> Const' raw
@@ -884,7 +891,8 @@ let rec (set_all_free as saf) : expr -> expr' = function
   | Applic (raw1, raw2) -> Applic' (saf raw1, List.map saf raw2)
 
   | LambdaSimple (raw1, raw2) -> LambdaSimple' (raw1, saf raw2)
-  | LambdaOpt (raw1, raw2, raw3) -> LambdaOpt' (raw1, raw2, saf raw3);;
+  | LambdaOpt (raw1, raw2, raw3) -> LambdaOpt' (raw1, raw2, saf raw3)
+;;
 
 let rec annot_var (e : expr') (vn : string) (l : int) (p : int) : expr' =
   let acv e = annot_var e vn l p in
@@ -910,13 +918,14 @@ let rec annot_var (e : expr') (vn : string) (l : int) (p : int) : expr' =
   | Seq' raw -> Seq' (List.map acv raw)
   | Set' (raw1, raw2) -> Set' (acv raw1, acv raw2)
   | Def' (raw1, raw2) -> Def' (acv raw1, acv raw2)
-  | Or' raw -> Or' raw
+  | Or' raw -> Or' (List.map acv raw)
   | Applic' (raw1, raw2) -> Applic' (acv raw1, List.map acv raw2)
   | ApplicTP' (raw1, raw2) -> ApplicTP' (acv raw1, List.map acv raw2)
   
   (* recursively annotating var for NEXT level *)
   | LambdaSimple' (raw1, raw2) -> LambdaSimple' (raw1, anv raw2)
-  | LambdaOpt' (raw1, raw2, raw3) -> LambdaOpt' (raw1, raw2, anv raw3);;
+  | LambdaOpt' (raw1, raw2, raw3) -> LambdaOpt' (raw1, raw2, anv raw3)
+;;
 
 let annot_var_init e vn i = annot_var e vn (-1) i;;
 
@@ -933,19 +942,65 @@ let rec annot_lex_addr = function
   | Seq' raw -> Seq' (List.map annot_lex_addr raw)
   | Set' (raw1, raw2) -> Set' (annot_lex_addr raw1, annot_lex_addr raw2)
   | Def' (raw1, raw2) -> Def' (annot_lex_addr raw1, annot_lex_addr raw2)
-  | Or' raw -> Or' raw
+  | Or' raw -> Or' (List.map annot_lex_addr raw)
   | Applic' (raw1, raw2) -> Applic' (annot_lex_addr raw1, List.map annot_lex_addr raw2)
   | ApplicTP' (raw1, raw2) -> ApplicTP' (annot_lex_addr raw1, List.map annot_lex_addr raw2)
   
   (* interesting: lambdas *)
   | LambdaSimple' (vn_lst, body) -> LambdaSimple' (vn_lst, indexed_fold_left annot_var_init body vn_lst)
-  | LambdaOpt' (vn_lst, vn_opt, body) -> LambdaOpt' (vn_lst, vn_opt, indexed_fold_left annot_var_init body (vn_lst@[vn_opt]));;
+  | LambdaOpt' (vn_lst, vn_opt, body) -> LambdaOpt' (vn_lst, vn_opt, indexed_fold_left annot_var_init body (vn_lst@[vn_opt]))
+;;
 
 let annotate_lexical_addresses = annot_lex_addr << set_all_free;;
 
+(* annotate tail calls suspecting *)
+let rec annot_tc_susp s = function
+  (* trivial *)
+  | Const' raw -> Const' raw
+  | Box' raw -> Box' raw
+  | BoxGet' raw -> BoxGet' raw
+  | BoxSet' (raw1, raw2) -> BoxSet' (raw1, raw2)
+  | Var' raw_var -> Var' raw_var
 
+  (* recursive calls *)
+  | If' (raw1, raw2, raw3) -> If' (annot_tc_susp false raw1, annot_tc_susp s raw2, annot_tc_susp s raw3)
+  | Seq' raw -> Seq' (map_with_last_exception (annot_tc_susp false) (annot_tc_susp true) raw)
+  | Set' (raw1, raw2) -> Set' (annot_tc_susp false raw1, annot_tc_susp false raw2)
+  | Def' (raw1, raw2) -> Def' (annot_tc_susp false raw1, annot_tc_susp false raw2)
+  | Or' raw -> Or' (List.map (annot_tc_susp false) raw) (* TODO: check what should we do with or *)
 
-let annotate_tail_calls e = raise X_not_yet_implemented;;
+  (* starts the suspection rolling *)
+  | LambdaSimple' (vn_lst, body) -> LambdaSimple' (vn_lst, annot_tc_susp true body)
+  | LambdaOpt' (vn_lst, vn_opt, body) -> LambdaOpt' (vn_lst, vn_opt, annot_tc_susp true body)
+
+  (* applic *)
+  | Applic' (raw1, raw2) ->
+    let applic_constructor = if s then fun (x,y) -> ApplicTP'(x,y) else fun(x,y) -> Applic'(x,y) in
+    applic_constructor (annot_tc_susp false raw1, List.map (annot_tc_susp false) raw2)
+  | ApplicTP' (raw1, raw2) -> raise X_this_should_not_happen (* this shouldn't exist yet *)
+;;
+
+let annotate_tail_calls = function
+  (* trivial *)
+  | Const' raw -> Const' raw
+  | Box' raw -> Box' raw
+  | BoxGet' raw -> BoxGet' raw
+  | BoxSet' (raw1, raw2) -> BoxSet' (raw1, raw2)
+  | Var' raw_var -> Var' raw_var
+
+  (* trivial recursive calls *)
+  | If' (raw1, raw2, raw3) -> If' (annotate_tail_calls raw1, annotate_tail_calls raw2, annotate_tail_calls raw3)
+  | Seq' raw -> Seq' (List.map annotate_tail_calls raw)
+  | Set' (raw1, raw2) -> Set' (annotate_tail_calls raw1, annotate_tail_calls raw2)
+  | Def' (raw1, raw2) -> Def' (annotate_tail_calls raw1, annotate_tail_calls raw2)
+  | Or' raw -> Or' (List.map annotate_tail_calls raw)
+  | LambdaSimple' (vn_lst, body) -> LambdaSimple' (vn_lst, annotate_tail_calls body)
+  | LambdaOpt' (vn_lst, vn_opt, body) -> LambdaOpt' (vn_lst, vn_opt, annotate_tail_calls body)
+
+  (* interesting: aplics *)
+  | Applic' (raw1, raw2) -> Applic' (annot_lex_addr raw1, List.map annot_lex_addr raw2)
+  | ApplicTP' (raw1, raw2) -> ApplicTP' (annot_lex_addr raw1, List.map annot_lex_addr raw2)
+;;
 
 let box_set e = raise X_not_yet_implemented;;
 
