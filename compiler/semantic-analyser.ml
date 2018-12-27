@@ -982,6 +982,151 @@ let rec annot_tc_susp s = function
 
 let annotate_tail_calls = annot_tc_susp false;;
 
+let rec first_depth_lambdas =
+  let first_depth_lambdas_of_expr_list = (List.fold_left (@) []) << (List.map first_depth_lambdas) in
+  function
+  | Const' _  -> []
+  | Var' _    -> []
+
+  | Box' _    -> raise X_this_should_not_happen
+  | BoxGet' _ -> raise X_this_should_not_happen
+  | BoxSet' _ -> raise X_this_should_not_happen
+
+  | If' (if_e, then_e, else_e) -> first_depth_lambdas_of_expr_list [if_e; then_e; else_e]
+  | Seq' e_list                -> first_depth_lambdas_of_expr_list e_list
+  | Set' (var_e, val_e)        -> first_depth_lambdas_of_expr_list [var_e; val_e]
+  | Def' (var_e, val_e)        -> first_depth_lambdas_of_expr_list [var_e; val_e]
+  | Or' e_list                 -> first_depth_lambdas_of_expr_list e_list
+
+  | LambdaSimple' _ as lambda -> [lambda]
+  | LambdaOpt' _  as lambda   -> [lambda]
+
+  | Applic' (fun_e, arg_list_e)   -> first_depth_lambdas_of_expr_list [fun_e] @ arg_list_e
+  | ApplicTP' (fun_e, arg_list_e) -> first_depth_lambdas_of_expr_list [fun_e] @ arg_list_e
+;;
+
+let name_of_var = function 
+  | VarFree name
+  | VarParam (name, _)
+  | VarBound (name, _, _) -> name
+;;
+
+let rec first_depth_vars vn =
+  let first_depth_vars_of_expr_list = (List.fold_left (@) []) << (List.map (first_depth_vars vn)) in
+  function
+  | Const' _  -> []
+
+  | Var' v as var_get -> if (name_of_var v) == vn then [var_get] else []
+
+  | Box' _    -> raise X_this_should_not_happen
+  | BoxGet' _ -> raise X_this_should_not_happen
+  | BoxSet' _ -> raise X_this_should_not_happen
+
+  | If' (if_e, then_e, else_e) -> first_depth_vars_of_expr_list [if_e; then_e; else_e]
+  | Seq' e_list                -> first_depth_vars_of_expr_list e_list
+
+  | Set' (var_e, val_e) as var_set -> [var_set]
+
+  | Def' (var_e, val_e)        -> first_depth_vars_of_expr_list [var_e; val_e]
+  | Or' e_list                 -> first_depth_vars_of_expr_list e_list
+
+  | LambdaSimple' _ -> []
+  | LambdaOpt' _    -> []
+
+  | Applic' (fun_e, arg_list_e)   -> first_depth_vars_of_expr_list [fun_e] @ arg_list_e
+  | ApplicTP' (fun_e, arg_list_e) -> first_depth_vars_of_expr_list [fun_e] @ arg_list_e
+;;
+
+type varTree = VarTreeNode of expr' list * (varTree list);;
+
+let not_in_params vn = function 
+  | Const' _    
+  | Var' _      
+  | Box' _      
+  | BoxGet' _   
+  | BoxSet' _   
+  | If' _       
+  | Seq' _      
+  | Set' _      
+  | Def' _      
+  | Or' _       
+  | Applic' _   
+  | ApplicTP' _ -> raise X_this_should_not_happen
+
+  | LambdaSimple' (vars, _)   -> List.exists ((=) vn) vars
+  | LambdaOpt' (vars, opt, _) -> List.exists ((=) vn) (vars @ [opt])
+;;
+
+let rec var_tree vn e =
+  first_depth_lambdas e
+  |> List.filter (not_in_params vn)
+  |> fun lambdas -> VarTreeNode (first_depth_vars vn e, List.map (var_tree vn) lambdas)
+;;
+
+let is_get = function
+  | Const' _    
+  | Box' _      
+  | BoxGet' _   
+  | BoxSet' _   
+  | If' _       
+  | Seq' _      
+  | Def' _      
+  | Or' _       
+  | LambdaSimple' _
+  | LambdaOpt' _
+  | Applic' _   
+  | ApplicTP' _ -> raise X_this_should_not_happen
+  
+  | Var' _ -> true
+  | Set' _ -> false
+;;
+
+let is_set = function
+  | Const' _    
+  | Box' _      
+  | BoxGet' _   
+  | BoxSet' _   
+  | If' _       
+  | Seq' _      
+  | Def' _      
+  | Or' _       
+  | LambdaSimple' _
+  | LambdaOpt' _
+  | Applic' _   
+  | ApplicTP' _ -> raise X_this_should_not_happen
+  
+  | Var' _ -> false
+  | Set' _ -> true
+;;
+
+let rec has pred = function VarTreeNode (e_list, vt_list) ->
+  List.exists pred e_list ||
+  List.exists (has pred) vt_list
+;;
+
+let has_get = has is_get;;
+let has_set = has is_set;;
+
+let rec should_box vn e =
+  let lambdas = first_depth_lambdas e in
+  first_depth_vars vn e
+  match e with 
+| Const' _        -> raise X_not_yet_implemented
+| Var' _          -> raise X_not_yet_implemented
+| Box' _          -> raise X_not_yet_implemented
+| BoxGet' _       -> raise X_not_yet_implemented
+| BoxSet' _       -> raise X_not_yet_implemented
+| If' _           -> raise X_not_yet_implemented
+| Seq' _          -> raise X_not_yet_implemented
+| Set' _          -> raise X_not_yet_implemented
+| Def' _          -> raise X_not_yet_implemented
+| Or' _           -> raise X_not_yet_implemented
+| LambdaSimple' _ -> raise X_not_yet_implemented
+| LambdaOpt' _    -> raise X_not_yet_implemented
+| Applic' _       -> raise X_not_yet_implemented
+| ApplicTP' _     -> raise X_not_yet_implemented
+;;
+
 let box_set e = raise X_not_yet_implemented;;
 
 let run_semantics = box_set << annotate_tail_calls << annotate_lexical_addresses;;
