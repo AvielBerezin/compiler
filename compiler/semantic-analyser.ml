@@ -1,3 +1,7 @@
+b
+kn
+kln
+
 (* pc.ml
  * A parsing-combinators package for ocaml
  *
@@ -863,6 +867,16 @@ module Semantics : SEMANTICS = struct
 let (<<) f g x = f (g x);;
 let (>>) f g x = g (f x);;
 
+let option_apply f = function
+  | None -> None
+  | Some x -> Some (f x)
+;;
+
+let rec index_of pred = function
+  | [] -> failwith "pred was not true for eny element in list"
+  | head :: tail -> if pred head then 0 else 1 + (index_of pred tail)
+;;
+
 let indexed_fold_left =
   let rec helper i f init lst =
     match lst with
@@ -878,17 +892,19 @@ let rec map_with_last_exception f g = function
   | [last] -> [g last]
 ;;
 
-let rec (set_all_free as saf) : expr -> expr' = function
+let rec set_all_free =
+  let saf = set_all_free in
+  function
   | Const raw -> Const' raw
 
   | Var raw -> Var' (VarFree raw)
 
   | If (raw1, raw2, raw3) -> If' (saf raw1, saf raw2, saf raw3)
-  | Seq raw -> Seq' (List.map saf raw)
-  | Set (raw1, raw2) -> Set' (saf raw1,saf raw2)
-  | Def (raw1, raw2) -> Def' (saf raw1, saf raw2)
-  | Or raw -> Or' (List.map saf raw)
-  | Applic (raw1, raw2) -> Applic' (saf raw1, List.map saf raw2)
+  | Seq raw               -> Seq' (List.map saf raw)
+  | Set (raw1, raw2)      -> Set' (saf raw1,saf raw2)
+  | Def (raw1, raw2)      -> Def' (saf raw1, saf raw2)
+  | Or raw                -> Or' (List.map saf raw)
+  | Applic (raw1, raw2)   -> Applic' (saf raw1, List.map saf raw2)
 
   | LambdaSimple (raw1, raw2) -> LambdaSimple' (raw1, saf raw2)
   | LambdaOpt (raw1, raw2, raw3) -> LambdaOpt' (raw1, raw2, saf raw3)
@@ -900,9 +916,6 @@ let rec annot_var (e : expr') (vn : string) (l : int) (p : int) : expr' =
   match e with
   (* trivial *)
   | Const' raw -> Const' raw
-  | Box' raw -> Box' raw
-  | BoxGet' raw -> BoxGet' raw
-  | BoxSet' (raw1, raw2) -> BoxSet' (raw1, raw2)
 
   (* interesting: annotating var type *)
   | Var' raw_var -> Var' (match raw_var with 
@@ -920,35 +933,36 @@ let rec annot_var (e : expr') (vn : string) (l : int) (p : int) : expr' =
   | Def' (raw1, raw2) -> Def' (acv raw1, acv raw2)
   | Or' raw -> Or' (List.map acv raw)
   | Applic' (raw1, raw2) -> Applic' (acv raw1, List.map acv raw2)
-  | ApplicTP' (raw1, raw2) -> ApplicTP' (acv raw1, List.map acv raw2)
   
   (* recursively annotating var for NEXT level *)
   | LambdaSimple' (raw1, raw2) -> LambdaSimple' (raw1, anv raw2)
   | LambdaOpt' (raw1, raw2, raw3) -> LambdaOpt' (raw1, raw2, anv raw3)
+
+  (* shouldn't exist yet *)
+  | ApplicTP' _ | Box' _ | BoxGet' _ | BoxSet' _ -> raise X_this_should_not_happen 
 ;;
 
 let annot_var_init e vn i = annot_var e vn (-1) i;;
 
 let rec annot_lex_addr = function
   (* trivial *)
-  | Const' raw -> Const' raw
-  | Box' raw -> Box' raw
-  | BoxGet' raw -> BoxGet' raw
-  | BoxSet' (raw1, raw2) -> BoxSet' (raw1, raw2)
+  | Const' raw   -> Const' raw
   | Var' raw_var -> Var' raw_var
 
   (* trivial recursive calls *)
   | If' (raw1, raw2, raw3) -> If' (annot_lex_addr raw1, annot_lex_addr raw2, annot_lex_addr raw3)
-  | Seq' raw -> Seq' (List.map annot_lex_addr raw)
-  | Set' (raw1, raw2) -> Set' (annot_lex_addr raw1, annot_lex_addr raw2)
-  | Def' (raw1, raw2) -> Def' (annot_lex_addr raw1, annot_lex_addr raw2)
-  | Or' raw -> Or' (List.map annot_lex_addr raw)
-  | Applic' (raw1, raw2) -> Applic' (annot_lex_addr raw1, List.map annot_lex_addr raw2)
-  | ApplicTP' (raw1, raw2) -> ApplicTP' (annot_lex_addr raw1, List.map annot_lex_addr raw2)
+  | Seq' raw               -> Seq' (List.map annot_lex_addr raw)
+  | Set' (raw1, raw2)      -> Set' (annot_lex_addr raw1, annot_lex_addr raw2)
+  | Def' (raw1, raw2)      -> Def' (annot_lex_addr raw1, annot_lex_addr raw2)
+  | Or' raw                -> Or' (List.map annot_lex_addr raw)
+  | Applic' (raw1, raw2)   -> Applic' (annot_lex_addr raw1, List.map annot_lex_addr raw2)
   
   (* interesting: lambdas *)
   | LambdaSimple' (vn_lst, body) -> LambdaSimple' (vn_lst, indexed_fold_left annot_var_init body vn_lst)
   | LambdaOpt' (vn_lst, vn_opt, body) -> LambdaOpt' (vn_lst, vn_opt, indexed_fold_left annot_var_init body (vn_lst@[vn_opt]))
+
+  (* shouldn't exist yet *)
+  | ApplicTP' _ | Box' _ | BoxGet' _ | BoxSet' _ -> raise X_this_should_not_happen 
 ;;
 
 let annotate_lexical_addresses = annot_lex_addr << set_all_free;;
@@ -957,27 +971,26 @@ let annotate_lexical_addresses = annot_lex_addr << set_all_free;;
 let rec annot_tc_susp s = function
   (* trivial *)
   | Const' raw -> Const' raw
-  | Box' raw -> Box' raw
-  | BoxGet' raw -> BoxGet' raw
-  | BoxSet' (raw1, raw2) -> BoxSet' (raw1, raw2)
   | Var' raw_var -> Var' raw_var
 
   (* recursive calls *)
   | If' (raw1, raw2, raw3) -> If' (annot_tc_susp false raw1, annot_tc_susp s raw2, annot_tc_susp s raw3)
-  | Seq' raw -> Seq' (map_with_last_exception (annot_tc_susp false) (annot_tc_susp s) raw)
-  | Set' (raw1, raw2) -> Set' (annot_tc_susp false raw1, annot_tc_susp false raw2)
-  | Def' (raw1, raw2) -> Def' (annot_tc_susp false raw1, annot_tc_susp false raw2)
-  | Or' raw -> Or' (map_with_last_exception (annot_tc_susp false) (annot_tc_susp s) raw)
+  | Seq' raw               -> Seq' (map_with_last_exception (annot_tc_susp false) (annot_tc_susp s) raw)
+  | Set' (raw1, raw2)      -> Set' (annot_tc_susp false raw1, annot_tc_susp false raw2)
+  | Def' (raw1, raw2)      -> Def' (annot_tc_susp false raw1, annot_tc_susp false raw2)
+  | Or' raw                -> Or' (map_with_last_exception (annot_tc_susp false) (annot_tc_susp s) raw)
 
   (* starts the suspection rolling *)
-  | LambdaSimple' (vn_lst, body) -> LambdaSimple' (vn_lst, annot_tc_susp true body)
+  | LambdaSimple' (vn_lst, body)      -> LambdaSimple' (vn_lst, annot_tc_susp true body)
   | LambdaOpt' (vn_lst, vn_opt, body) -> LambdaOpt' (vn_lst, vn_opt, annot_tc_susp true body)
 
   (* applic *)
   | Applic' (raw1, raw2) ->
     let applic_constructor = if s then fun (x,y) -> ApplicTP'(x,y) else fun(x,y) -> Applic'(x,y) in
     applic_constructor (annot_tc_susp false raw1, List.map (annot_tc_susp false) raw2)
-  | ApplicTP' (raw1, raw2) -> raise X_this_should_not_happen (* this shouldn't exist yet *)
+
+  (* shouldn't exist yet *)
+  | ApplicTP' _ | Box' _ | BoxGet' _ | BoxSet' _ -> raise X_this_should_not_happen 
 ;;
 
 let annotate_tail_calls = annot_tc_susp false;;
@@ -985,24 +998,20 @@ let annotate_tail_calls = annot_tc_susp false;;
 let rec first_depth_lambdas =
   let first_depth_lambdas_of_expr_list = (List.fold_left (@) []) << (List.map first_depth_lambdas) in
   function
-  | Const' _  -> []
-  | Var' _    -> []
+  | Const' _ | Var' _ | Box' _ | BoxGet' _ -> []
 
-  | Box' _    -> raise X_this_should_not_happen
-  | BoxGet' _ -> raise X_this_should_not_happen
-  | BoxSet' _ -> raise X_this_should_not_happen
+  | BoxSet' (_, e) -> first_depth_lambdas e
 
-  | If' (if_e, then_e, else_e) -> first_depth_lambdas_of_expr_list [if_e; then_e; else_e]
-  | Seq' e_list                -> first_depth_lambdas_of_expr_list e_list
-  | Set' (var_e, val_e)        -> first_depth_lambdas_of_expr_list [var_e; val_e]
-  | Def' (var_e, val_e)        -> first_depth_lambdas_of_expr_list [var_e; val_e]
-  | Or' e_list                 -> first_depth_lambdas_of_expr_list e_list
+  | If' (if_e, then_e, else_e)    -> first_depth_lambdas_of_expr_list [if_e; then_e; else_e]
+  | Seq' e_list                   -> first_depth_lambdas_of_expr_list e_list
+  | Set' (var_e, val_e)           -> first_depth_lambdas_of_expr_list [var_e; val_e]
+  | Def' (var_e, val_e)           -> first_depth_lambdas_of_expr_list [var_e; val_e]
+  | Or' e_list                    -> first_depth_lambdas_of_expr_list e_list
+  | Applic' (fun_e, arg_list_e)   -> first_depth_lambdas_of_expr_list [fun_e] @ arg_list_e
+  | ApplicTP' (fun_e, arg_list_e) -> first_depth_lambdas_of_expr_list [fun_e] @ arg_list_e
 
   | LambdaSimple' _ as lambda -> [lambda]
   | LambdaOpt' _  as lambda   -> [lambda]
-
-  | Applic' (fun_e, arg_list_e)   -> first_depth_lambdas_of_expr_list [fun_e] @ arg_list_e
-  | ApplicTP' (fun_e, arg_list_e) -> first_depth_lambdas_of_expr_list [fun_e] @ arg_list_e
 ;;
 
 let name_of_var = function 
@@ -1014,53 +1023,38 @@ let name_of_var = function
 let rec first_depth_vars vn =
   let first_depth_vars_of_expr_list = (List.fold_left (@) []) << (List.map (first_depth_vars vn)) in
   function
-  | Const' _  -> []
+  | Const' _ | Box' _ | BoxGet' _ -> []
+
+  | LambdaSimple' _ | LambdaOpt' _    -> []
 
   | Var' v as var_get -> if (name_of_var v) == vn then [var_get] else []
 
-  | Box' _    -> raise X_this_should_not_happen
-  | BoxGet' _ -> raise X_this_should_not_happen
-  | BoxSet' _ -> raise X_this_should_not_happen
+  | BoxSet' (_, e) -> first_depth_vars vn e
 
-  | If' (if_e, then_e, else_e) -> first_depth_vars_of_expr_list [if_e; then_e; else_e]
-  | Seq' e_list                -> first_depth_vars_of_expr_list e_list
-
-  | Set' (var_e, val_e) as var_set -> [var_set]
-
-  | Def' (var_e, val_e)        -> first_depth_vars_of_expr_list [var_e; val_e]
-  | Or' e_list                 -> first_depth_vars_of_expr_list e_list
-
-  | LambdaSimple' _ -> []
-  | LambdaOpt' _    -> []
-
+  | If' (if_e, then_e, else_e)    -> first_depth_vars_of_expr_list [if_e; then_e; else_e]
+  | Seq' e_list                   -> first_depth_vars_of_expr_list e_list
+  | Def' (var_e, val_e)           -> first_depth_vars_of_expr_list [var_e; val_e]
+  | Or' e_list                    -> first_depth_vars_of_expr_list e_list
   | Applic' (fun_e, arg_list_e)   -> first_depth_vars_of_expr_list [fun_e] @ arg_list_e
   | ApplicTP' (fun_e, arg_list_e) -> first_depth_vars_of_expr_list [fun_e] @ arg_list_e
+
+  | Set' (var_e, val_e) as var_set -> [var_set]
 ;;
 
 type varTree = VarTreeNode of expr' list * (varTree list);;
 
 let not_in_params vn = function 
-  | Const' _    
-  | Var' _      
-  | Box' _      
-  | BoxGet' _   
-  | BoxSet' _   
-  | If' _       
-  | Seq' _      
-  | Set' _      
-  | Def' _      
-  | Or' _       
-  | Applic' _   
-  | ApplicTP' _ -> raise X_this_should_not_happen
-
   | LambdaSimple' (vars, _)   -> List.exists ((=) vn) vars
   | LambdaOpt' (vars, opt, _) -> List.exists ((=) vn) (vars @ [opt])
+
+  | _ -> raise X_this_should_not_happen
 ;;
 
 let rec var_tree vn e =
   first_depth_lambdas e
   |> List.filter (not_in_params vn)
-  |> fun lambdas -> VarTreeNode (first_depth_vars vn e, List.map (var_tree vn) lambdas)
+  |> List.map (var_tree vn)
+  |> fun children -> VarTreeNode (first_depth_vars vn e, children)
 ;;
 
 let is_get = function
@@ -1107,28 +1101,114 @@ let rec has pred = function VarTreeNode (e_list, vt_list) ->
 let has_get = has is_get;;
 let has_set = has is_set;;
 
-let rec should_box vn e =
-  let lambdas = first_depth_lambdas e in
-  first_depth_vars vn e
-  match e with 
-| Const' _        -> raise X_not_yet_implemented
-| Var' _          -> raise X_not_yet_implemented
-| Box' _          -> raise X_not_yet_implemented
-| BoxGet' _       -> raise X_not_yet_implemented
-| BoxSet' _       -> raise X_not_yet_implemented
-| If' _           -> raise X_not_yet_implemented
-| Seq' _          -> raise X_not_yet_implemented
-| Set' _          -> raise X_not_yet_implemented
-| Def' _          -> raise X_not_yet_implemented
-| Or' _           -> raise X_not_yet_implemented
-| LambdaSimple' _ -> raise X_not_yet_implemented
-| LambdaOpt' _    -> raise X_not_yet_implemented
-| Applic' _       -> raise X_not_yet_implemented
-| ApplicTP' _     -> raise X_not_yet_implemented
+(* let rec exists_true_except_pos i lst j = match lst with
+  | (h2::t2) -> (i != j && h2) || exists_true_except_pos i t2 (j+1)
+  | [] -> false
+;; *)
+
+let exists_two_diff_and lst1 lst2 =
+  let rec elem_in_lst1_and_lst2 lst1 lst2 i j =
+    match lst1,lst2 with
+    | (h1::_), (h2::t2) -> h1 && (((i != j) && h2) || elem_in_lst1_and_lst2 lst1 t2 i (j+1))
+    | [], _ | _, [] -> false
+  in 
+  let rec lst1_and_lst2 lst1 lst2 i j =
+    match lst1, lst2 with
+    | (h1::t1), (h2::t2) -> elem_in_lst1_and_lst2 lst1 lst2 i j || lst1_and_lst2 t1 lst2 (i+1) j
+    | [], _ | _, [] -> false
+  in
+  lst1_and_lst2 lst1 lst2 0 0 ||
+  lst1_and_lst2 lst2 lst1 0 0
 ;;
 
-let box_set e = raise X_not_yet_implemented;;
+let rec should_box vn e =
+  let VarTreeNode (var_list, vt_list) = var_tree vn e in
+  let preds pred = List.exists pred var_list :: (List.map (has pred) vt_list) in
+  let gets = preds is_get in
+  let sets = preds is_set in
+  exists_two_diff_and gets sets
+;;
 
-let run_semantics = box_set << annotate_tail_calls << annotate_lexical_addresses;;
+let set_var_to_box vn = function
+  | LambdaSimple' (p_lst, Seq' (e_list)) ->
+    let minor = index_of ((=) vn) p_lst in
+    let new_body = Seq' (Set'(Var' (VarParam(vn, minor)), Box'(VarParam(vn, minor))) :: e_list) in
+    LambdaSimple' (p_lst, new_body)
+
+  | LambdaOpt' (p_lst, opt, Seq' (e_list)) ->
+    let minor = index_of ((=) vn) (p_lst @ [opt]) in
+    let new_body = Seq' (Set' (Var' (VarParam(vn, minor)), Box'(VarParam(vn, minor))) :: e_list) in
+    LambdaOpt' (p_lst, opt, new_body)
+
+  | _ -> raise X_this_should_not_happen
+;;
+
+let rec replace_var_with_box vn =
+  let rvwb = replace_var_with_box vn in
+  function
+  ( Const' _ | Box' _ | BoxGet' _ ) as trivial -> trivial
   
+  | BoxSet' (v, e)         -> BoxSet' (v, rvwb e)
+  | If' (if_e, th_e, el_e) -> If' (rvwb if_e, rvwb th_e,rvwb el_e)
+  | Seq' (e_list)          -> Seq' (List.map rvwb e_list)
+  | Def' (v, e)            -> Def' (v, rvwb e)
+  | Or' (e_list)           -> Or' (List.map rvwb e_list)
+  | Applic' (f, ps)        -> Applic' (rvwb f, List.map rvwb ps)
+  | ApplicTP' (f, ps)      -> ApplicTP' (rvwb f, List.map rvwb ps)
+  
+  | Set' (Var' v, e)            -> if name_of_var v = vn then BoxSet' (v, rvwb e) else Set' (Var' v, rvwb e)
+
+  | LambdaSimple' (v_list, body) as lambda     ->
+    if List.exists ((=) vn) v_list
+    then lambda
+    else LambdaSimple' (v_list, rvwb body)
+  | LambdaOpt' (v_list, v_opt, body) as lambda ->
+    if List.exists ((=) vn) (v_opt :: v_list)
+    then lambda
+    else LambdaOpt' (v_list, v_opt, rvwb body)
+
+  | Var' v          -> if name_of_var v = vn then BoxGet' v else Var' v
+
+  (* How is it even possible to set something that is not var *)
+  | Set' _ -> raise X_this_should_not_happen
+;;
+
+let box_var vn = set_var_to_box vn >> replace_var_with_box vn;;
+
+let box_set = function
+  | Const' _        -> raise X_not_yet_implemented
+  | Var' _          -> raise X_not_yet_implemented
+  | Box' _          -> raise X_not_yet_implemented
+  | BoxGet' _       -> raise X_not_yet_implemented
+  | BoxSet' _       -> raise X_not_yet_implemented
+  | If' _           -> raise X_not_yet_implemented
+  | Seq' _          -> raise X_not_yet_implemented
+  | Set' _          -> raise X_not_yet_implemented
+  | Def' _          -> raise X_not_yet_implemented
+  | Or' _           -> raise X_not_yet_implemented
+  | LambdaSimple' _ -> raise X_not_yet_implemented
+  | LambdaOpt' _    -> raise X_not_yet_implemented
+  | Applic' _       -> raise X_not_yet_implemented
+  | ApplicTP' _     -> raise X_not_yet_implemented
+;;
+
+let run_semantics = annotate_lexical_addresses >>  annotate_tail_calls >> box_set ;;
+
+(* let the_not_impemented_yet_exper_function = function
+  | Const' _        -> raise X_not_yet_implemented
+  | Var' _          -> raise X_not_yet_implemented
+  | Box' _          -> raise X_not_yet_implemented
+  | BoxGet' _       -> raise X_not_yet_implemented
+  | BoxSet' _       -> raise X_not_yet_implemented
+  | If' _           -> raise X_not_yet_implemented
+  | Seq' _          -> raise X_not_yet_implemented
+  | Set' _          -> raise X_not_yet_implemented
+  | Def' _          -> raise X_not_yet_implemented
+  | Or' _           -> raise X_not_yet_implemented
+  | LambdaSimple' _ -> raise X_not_yet_implemented
+  | LambdaOpt' _    -> raise X_not_yet_implemented
+  | Applic' _       -> raise X_not_yet_implemented
+  | ApplicTP' _     -> raise X_not_yet_implemented
+;; *)
+
 end;; (* struct Semantics *)
