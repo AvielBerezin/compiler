@@ -1124,8 +1124,7 @@ let exists_two_diff_and lst1 lst2 =
 let rec should_box vn e =
   let VarTreeNode (var_list, vt_list) = var_tree vn e in
   let preds pred = List.exists pred var_list :: (List.map (has pred) vt_list) in
-  let gets = preds is_get in
-  let sets = preds is_set in
+  let gets, sets = preds is_get, preds is_set in
   exists_two_diff_and gets sets
 ;;
 
@@ -1175,21 +1174,22 @@ let rec replace_var_with_box vn =
 
 let box_var vn = set_var_to_box vn >> replace_var_with_box vn;;
 
-let box_set = function
-  | Const' _        -> raise X_not_yet_implemented
-  | Var' _          -> raise X_not_yet_implemented
-  | Box' _          -> raise X_not_yet_implemented
-  | BoxGet' _       -> raise X_not_yet_implemented
-  | BoxSet' _       -> raise X_not_yet_implemented
-  | If' _           -> raise X_not_yet_implemented
-  | Seq' _          -> raise X_not_yet_implemented
-  | Set' _          -> raise X_not_yet_implemented
-  | Def' _          -> raise X_not_yet_implemented
-  | Or' _           -> raise X_not_yet_implemented
-  | LambdaSimple' _ -> raise X_not_yet_implemented
-  | LambdaOpt' _    -> raise X_not_yet_implemented
-  | Applic' _       -> raise X_not_yet_implemented
-  | ApplicTP' _     -> raise X_not_yet_implemented
+let rec box_set =
+  let box_if_needed e vn = if should_box vn e then box_var vn e else e in
+  function
+  | Const' _ | Var' _ | Box' _ | BoxGet' _ as trivial -> trivial
+
+  | BoxSet' (v, e)         -> BoxSet' (v, box_set e)
+  | If' (if_e, th_e, el_e) -> If' (box_set if_e, box_set th_e, box_set el_e)
+  | Seq' e_list            -> Seq' (List.map box_set e_list)
+  | Set' (v, e)            -> Set' (v, box_set e)
+  | Def' (v, e )           -> Def' (v, box_set e)
+  | Or' (e_list)           -> Or' (List.map box_set e_list)
+  | Applic' (f, args)      -> Applic' (box_set f, List.map box_set args)
+  | ApplicTP' (f, args)    -> ApplicTP' (box_set f, List.map box_set args)
+
+  | LambdaSimple' (vn_list, e)      -> LambdaSimple' (vn_list, List.fold_left box_if_needed e vn_list)
+  | LambdaOpt' (vn_list, vn_opt, e) -> LambdaOpt' (vn_list, vn_opt, List.fold_left box_if_needed e (vn_opt :: vn_list))
 ;;
 
 let run_semantics = annotate_lexical_addresses >>  annotate_tail_calls >> box_set ;;
